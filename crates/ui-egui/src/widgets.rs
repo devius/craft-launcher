@@ -20,10 +20,23 @@ pub fn tone_color(t: &Tokens, tone: Tone) -> Color32 {
     }
 }
 
+/// `text` in upper case, except Georgian: Georgian has no letter case, and the capitals Unicode maps
+/// its letters to (Mtavruli, U+1C90–U+1CBF) are a display style most system fonts don't draw.
+fn upper(text: &str) -> String {
+    text.chars().fold(String::with_capacity(text.len()), |mut out, c| {
+        if ('\u{10d0}'..='\u{10ff}').contains(&c) {
+            out.push(c);
+        } else {
+            out.extend(c.to_uppercase());
+        }
+        out
+    })
+}
+
 /// `text` laid out upper case in `family`, `spacing` points between letters.
 pub fn caps(ui: &Ui, text: &str, size: f32, family: egui::FontFamily, spacing: f32, color: Color32) -> Arc<Galley> {
     let format = egui::TextFormat { font_id: egui::FontId::new(size, family), color, extra_letter_spacing: spacing, ..Default::default() };
-    ui.painter().layout_job(egui::text::LayoutJob::single_section(text.to_uppercase(), format))
+    ui.painter().layout_job(egui::text::LayoutJob::single_section(upper(text), format))
 }
 
 /// A `.hud-label`: 11 px Geist Mono, upper case, widely spaced.
@@ -60,7 +73,7 @@ pub fn hud_elided(ui: &mut Ui, text: &str, color: Color32, max_width: f32) -> Re
         extra_letter_spacing: theme::HUD_SPACING,
         ..Default::default()
     };
-    let mut job = egui::text::LayoutJob::single_section(text.to_uppercase(), format);
+    let mut job = egui::text::LayoutJob::single_section(upper(text), format);
     job.wrap = egui::text::TextWrapping::truncate_at_width(max_width.min(ui.available_width()).max(0.0));
     let galley = ui.painter().layout_job(job);
     let elided = galley.elided;
@@ -568,4 +581,13 @@ pub fn wordmark_in(ui: &mut Ui, app: &artcraft_launcher_core::CraftApp, size: f3
 /// A heading in the display face, tracked in like the site's (`tracking-[-0.02em]`).
 pub fn heading(text: &str, size: f32, color: Color32) -> RichText {
     RichText::new(text).size(size).family(theme::display()).color(color).extra_letter_spacing(-0.02 * size)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn upper_leaves_georgian_alone() {
+        assert_eq!(super::upper("Update all (2)"), "UPDATE ALL (2)");
+        assert_eq!(super::upper("ყველას განახლება (2) · ArtCraft"), "ყველას განახლება (2) · ARTCRAFT");
+    }
 }
