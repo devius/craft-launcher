@@ -184,7 +184,7 @@ fn georgian_switches_persists_and_keeps_install_actions() {
     h.run_steps(3);
     h.get_by_label("გამოსახულებების რედაქტირება");
     h.get_by_label_contains("ბოლო შემოწმება: 3 წუთის წინ · წყარო: ArtCraft API");
-    h.get_by_label("განახლება: 0.5.0");
+    h.get_by_label("განახლება ვერსიამდე 0.5.0");
     // Product names stay in English.
     assert!(h.query_by_label("Launcher").is_none());
     snapshot(&mut h, "grid-ka-dark");
