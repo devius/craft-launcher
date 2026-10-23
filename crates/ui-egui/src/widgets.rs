@@ -4,6 +4,7 @@
 //! Upper-case text is drawn upper case but announced to screen readers as written.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use egui::{Color32, CornerRadius, Galley, Rect, Response, RichText, Sense, Stroke, Ui, vec2};
 
@@ -20,11 +21,21 @@ pub fn tone_color(t: &Tokens, tone: Tone) -> Color32 {
     }
 }
 
-/// `text` in upper case, except Georgian: Georgian has no letter case, and the capitals Unicode maps
-/// its letters to (Mtavruli, U+1C90–U+1CBF) are a display style most system fonts don't draw.
+/// Whether the Georgian face in use draws Mtavruli (U+1C90–U+1CBF), the capitals Unicode maps
+/// Georgian letters to. Set when the face loads; until then, and without one, Georgian stays as
+/// written, since a face without them (DejaVu Sans, older Sylfaen) would draw boxes.
+static GEORGIAN_CAPS: AtomicBool = AtomicBool::new(false);
+
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+pub(crate) fn set_georgian_caps(on: bool) {
+    GEORGIAN_CAPS.store(on, Ordering::Relaxed);
+}
+
+/// `text` in upper case. Georgian goes to Mtavruli only when the face draws it.
 fn upper(text: &str) -> String {
+    let georgian_caps = GEORGIAN_CAPS.load(Ordering::Relaxed);
     text.chars().fold(String::with_capacity(text.len()), |mut out, c| {
-        if ('\u{10d0}'..='\u{10ff}').contains(&c) {
+        if !georgian_caps && ('\u{10d0}'..='\u{10ff}').contains(&c) {
             out.push(c);
         } else {
             out.extend(c.to_uppercase());
@@ -586,8 +597,11 @@ pub fn heading(text: &str, size: f32, color: Color32) -> RichText {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn upper_leaves_georgian_alone() {
+    fn upper_keeps_georgian_unless_the_face_has_capitals() {
         assert_eq!(super::upper("Update all (2)"), "UPDATE ALL (2)");
         assert_eq!(super::upper("ყველას განახლება (2) · ArtCraft"), "ყველას განახლება (2) · ARTCRAFT");
+        super::set_georgian_caps(true);
+        assert_eq!(super::upper("ყველას განახლება · ArtCraft"), "ᲧᲕᲔᲚᲐᲡ ᲒᲐᲜᲐᲮᲚᲔᲑᲐ · ARTCRAFT");
+        super::set_georgian_caps(false);
     }
 }
