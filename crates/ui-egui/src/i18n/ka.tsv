@@ -25,7 +25,7 @@
 
 	Launcher	Launcher
 	Craft App Suite	Craft App Suite
-	Open Source Tools for Creatives, Makers, and Builders	ღია კოდის ხელსაწყოები შემოქმედთათვის, ოსტატებისა და შემქმნელებისთვის
+	Open Source Tools for Creatives, Makers, and Builders	ღია კოდის ხელსაწყოები შემოქმედთათვის, ოსტატებისა და მშენებლებისთვის
 	Settings	პარამეტრები
 	Check for updates	განახლებების შემოწმება
 	Grid	ბადე
@@ -52,7 +52,7 @@
 	Classic	კლასიკური
 	NEW	ახალი
 	Install	ინსტალაცია
-	Update to {v}	განახლება: {v}
+	Update to {v}	განახლება ვერსიამდე {v}
 	Open	გახსნა
 	Download for {os}	ჩამოტვირთვა {os}-ისთვის
 	Download	ჩამოტვირთვა
@@ -158,7 +158,7 @@
 # Package formats offered for download (PackageKind::label)
 	Installer (.msi)	ინსტალერი (.msi)
 	Portable (.zip)	პორტატული (.zip)
-	Disk image (.dmg)	დისკის ასლი (.dmg)
+	Disk image (.dmg)	დისკის იმიჯი (.dmg)
 	Debian package (.deb)	Debian-ის პაკეტი (.deb)
 	RPM package (.rpm)	RPM პაკეტი (.rpm)
 	Arch package (.pkg.tar.zst)	Arch-ის პაკეტი (.pkg.tar.zst)
@@ -206,7 +206,7 @@ month	Dec	დეკ
 	Available to install	ხელმისაწვდომია
 	Available	ხელმისაწვდომია
 	Installed · up to date	დაინსტალირებულია · უახლესი ვერსია
-	Update available	არის განახლება
+	Update available	ხელმისაწვდომია განახლება
 	Installed	დაინსტალირებულია
 	installed	დაინსტალირებულია
 	Not available here	აქ მიუწვდომელია
@@ -228,8 +228,8 @@ month	Dec	დეკ
 	Language	ენა
 	Ascending	ზრდადობით
 	Descending	კლებადობით
-	Click to reverse the order	დააწკაპუნეთ რიგის შესაბრუნებლად
-	Click to sort by this column	დააწკაპუნეთ ამ სვეტით სორტირებისთვის
+	Click to reverse the order	დაწკაპეთ რიგის შესაბრუნებლად
+	Click to sort by this column	დაწკაპეთ ამ სვეტით სორტირებისთვის
 	Like {name}	{name}-ის მსგავსი
 	{done} of {total}	{done} / {total}
 	Downloading	ჩამოტვირთვა
@@ -278,7 +278,7 @@ filter	Installed	დაინსტალირებული
 	Platforms	პლატფორმები
 	Releases	გამოშვებები
 	Enlarge picture	სურათის გადიდება
-	Click to enlarge	დააწკაპუნეთ გასადიდებლად
+	Click to enlarge	დაწკაპეთ გასადიდებლად
 	Previous picture (←)	წინა სურათი (←)
 	Next picture (→)	შემდეგი სურათი (→)
 	Loading pictures…	სურათები იტვირთება…
