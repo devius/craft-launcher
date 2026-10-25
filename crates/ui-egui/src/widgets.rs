@@ -33,7 +33,11 @@ pub(crate) fn set_georgian_caps(on: bool) {
 
 /// `text` in upper case. Georgian goes to Mtavruli only when the face draws it.
 fn upper(text: &str) -> String {
-    let georgian_caps = GEORGIAN_CAPS.load(Ordering::Relaxed);
+    upper_with(text, GEORGIAN_CAPS.load(Ordering::Relaxed))
+}
+
+/// [`upper`] with the face's Georgian capitals given rather than read from [`GEORGIAN_CAPS`].
+fn upper_with(text: &str, georgian_caps: bool) -> String {
     text.chars().fold(String::with_capacity(text.len()), |mut out, c| {
         if !georgian_caps && ('\u{10d0}'..='\u{10ff}').contains(&c) {
             out.push(c);
@@ -791,10 +795,9 @@ mod tests {
 
     #[test]
     fn upper_keeps_georgian_unless_the_face_has_capitals() {
-        assert_eq!(super::upper("Update all (2)"), "UPDATE ALL (2)");
-        assert_eq!(super::upper("ყველას განახლება (2) · ArtCraft"), "ყველას განახლება (2) · ARTCRAFT");
-        super::set_georgian_caps(true);
-        assert_eq!(super::upper("ყველას განახლება · ArtCraft"), "ᲧᲕᲔᲚᲐᲡ ᲒᲐᲜᲐᲮᲚᲔᲑᲐ · ARTCRAFT");
-        super::set_georgian_caps(false);
+        // The capability is passed in: `GEORGIAN_CAPS` is shared with tests that load a face.
+        assert_eq!(super::upper_with("Update all (2)", false), "UPDATE ALL (2)");
+        assert_eq!(super::upper_with("ყველას განახლება (2) · ArtCraft", false), "ყველას განახლება (2) · ARTCRAFT");
+        assert_eq!(super::upper_with("ყველას განახლება · ArtCraft", true), "ᲧᲕᲔᲚᲐᲡ ᲒᲐᲜᲐᲮᲚᲔᲑᲐ · ARTCRAFT");
     }
 }
