@@ -101,6 +101,8 @@
 	Updates always use the format an app was installed with.	განახლება ყოველთვის იმ ფორმატს იყენებს, რომლითაც აპლიკაცია დაინსტალირდა.
 	Running in the background	ფონურ რეჟიმში მუშაობა
 	Keep running in the tray when the window is closed	ფანჯრის დახურვის შემდეგ მუშაობის გაგრძელება შეტყობინებების არეში
+	ArtCraft Launcher is still running	ArtCraft Launcher მუშაობას აგრძელებს
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	ის შეტყობინებების არეშია: გახსენით ან დახურეთ ის იქ არსებული ხატულიდან, ან გამორთეთ ეს პარამეტრებში.
 	Show the window on the current desktop	ფანჯრის ჩვენება მიმდინარე სამუშაო მაგიდაზე
 	Start ArtCraft Launcher when I log in	ArtCraft Launcher-ის გაშვება სისტემაში შესვლისას
 	Community	საზოგადოება
@@ -271,6 +273,7 @@ column	Released	გამოშვება
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	დაინსტალირებული
 	App details	აპლიკაციის დეტალები
+	More actions for {name}	სხვა მოქმედებები: {name}
 	Close (Esc)	დახურვა (Esc)
 	Features	შესაძლებლობები
 	Latest release	უახლესი გამოშვება
