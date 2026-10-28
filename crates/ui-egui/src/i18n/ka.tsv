@@ -101,8 +101,8 @@
 	Updates always use the format an app was installed with.	განახლება ყოველთვის იმ ფორმატს იყენებს, რომლითაც აპლიკაცია დაინსტალირდა.
 	Running in the background	ფონურ რეჟიმში მუშაობა
 	Keep running in the tray when the window is closed	ფანჯრის დახურვის შემდეგ მუშაობის გაგრძელება შეტყობინებების არეში
-	ArtCraft Launcher is still running	ArtCraft Launcher მუშაობას აგრძელებს
-	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	ის შეტყობინებების არეშია: გახსენით ან დახურეთ ის იქ არსებული ხატულიდან, ან გამორთეთ ეს პარამეტრებში.
+	ArtCraft Launcher is still running	ArtCraft Launcher კვლავ მუშაობს
+	It's in the tray: open it or quit it from the tray icon, or turn this off in the settings.	ის შეტყობინებების არეშია: გახსენით ან დახურეთ მისი ხატულით, ან გამორთეთ ეს ფუნქცია პარამეტრებში.
 	Show the window on the current desktop	ფანჯრის ჩვენება მიმდინარე სამუშაო მაგიდაზე
 	Start ArtCraft Launcher when I log in	ArtCraft Launcher-ის გაშვება სისტემაში შესვლისას
 	Community	საზოგადოება
@@ -131,7 +131,7 @@
 	Unhide App	აპლიკაციის გამოჩენა
 	Hidden Apps	დამალული აპლიკაციები
 	Apps you hid	თქვენ მიერ დამალული აპლიკაციები
-	Checked {ago} · using {sources}	ბოლო შემოწმება: {ago} · წყარო: {sources}
+	Checked {ago} · using {sources}	შემოწმდა {ago} · წყარო: {sources}
 	{a} and {b}	{a} და {b}
 	Join the Discord	შემოუერთდით Discord-ს
 	Learn more	დაწვრილებით
@@ -171,14 +171,14 @@
 photocraft	Image editing	გამოსახულებების რედაქტირება
 vectorcraft	Vector illustration	ვექტორული ილუსტრაცია
 filmcraft	Video editing, color and sound	ვიდეოს მონტაჟი, ფერი და ხმა
-lightcraft	Photo library and raw development	ფოტობიბლიოთეკა და RAW-ის დამუშავება
+lightcraft	Photo library and raw development	ფოტოთეკა და RAW-ის დამუშავება
 pdfcraft	Reading, organizing and protecting PDFs	PDF-ების კითხვა, ორგანიზება და დაცვა
-effectcraft	Motion graphics and visual effects	მოძრავი გრაფიკა და ვიზუალური ეფექტები
+effectcraft	Motion graphics and visual effects	მოძრავი გრაფიკა და ეფექტები
 designcraft	Page layout and publishing	გვერდების მაკეტირება და გამოცემა
 wordcraft	Writing and document design	წერა და დოკუმენტების დიზაინი
 deckcraft	Presentations and slide shows	პრეზენტაციები და სლაიდშოუები
 gridcraft	Spreadsheets and data	ელცხრილები და მონაცემები
-cadcraft	Computer-aided design and drafting	ავტომატიზებული დაპროექტება და ნახაზები
+cadcraft	Computer-aided design and drafting	დაპროექტება და ნახაზები
 soundcraft	Recording, editing and mixing audio	აუდიოს ჩაწერა, რედაქტირება და მიქსირება
 figcraft	Interface design and prototyping	ინტერფეისის დიზაინი და პროტოტიპირება
 
@@ -273,7 +273,7 @@ column	Released	გამოშვება
 # Contextual: the filter tab names a group (the status pill says "Installed")
 filter	Installed	დაინსტალირებული
 	App details	აპლიკაციის დეტალები
-	More actions for {name}	სხვა მოქმედებები: {name}
+	More actions for {name}	{name}: სხვა მოქმედებები
 	Close (Esc)	დახურვა (Esc)
 	Features	შესაძლებლობები
 	Latest release	უახლესი გამოშვება
