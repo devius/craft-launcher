@@ -3,7 +3,9 @@
 //! Apps go where their platform keeps applications, installed the platform's own way:
 //!
 //! - macOS: the signed `.app` from the release DMG into `/Applications`.
-//! - Windows: the release MSI (Windows Installer) into `C:\Program Files\<App>`.
+//! - Windows: the release MSI (Windows Installer), for the current user into
+//!   `%LOCALAPPDATA%\Programs\ArtCraft\<App>` by default. An update keeps the installed copy's folder
+//!   and scope (per-machine copies stay in `C:\Program Files\ArtCraft\<App>`).
 //! - Linux: the distro's own package (`.deb` through apt on the Debian family, `.rpm` through
 //!   dnf/zypper/rpm on the Fedora, Red Hat and SUSE families, read from `os-release`) with the
 //!   system's polkit password prompt; otherwise a Flatpak, otherwise an AppImage in
@@ -90,6 +92,19 @@ pub fn install_at(
         return Err(format!("Cannot update {} to {}: installed version {} is newer", app.name, release.version_label(), inst_v));
     }
     log::info!("{}: starting {} to {} ({})", app.name, if existing.is_some() { "update" } else { "install" }, release.version_label(), kind.label());
+    #[cfg(windows)]
+    let msi_scope = if kind == PackageKind::Msi {
+        let updated = crate::msi_context::update_scope(
+            existing.is_some_and(|inst| inst.source == InstallSource::Msi),
+            existing.and_then(|inst| inst.package.as_deref()),
+            crate::msi_context::probe,
+            |code| crate::detect::windows::record_scope(app, code),
+        )?;
+        // A fresh install keeps the package's own default unless the chosen folder needs administrator rights.
+        updated.or_else(|| if existing.is_none() { crate::msi_context::fresh_scope(destination.as_deref(), can_create_files_in) } else { None })
+    } else {
+        None
+    };
     let file = download(release, asset, job)?;
     log::info!("{}: download ready ({}), running installer...", app.name, file.display());
     // Past this point the install can't be interrupted halfway.
@@ -103,7 +118,12 @@ pub fn install_at(
                 .map(|path| Some(record(&version, kind, path, Vec::new(), false)))
         }
         #[cfg(windows)]
-        PackageKind::Msi => windows::run_msi(&file, destination.as_deref(), job.stop, &mut *job.phase).map(|_| None),
+        PackageKind::Msi => {
+            // An update lands in the same Windows Installer context as the copy being replaced:
+            // per-machine needs elevation, per-user must not duplicate itself per-machine. A
+            // fresh install passes no context and takes the package's own default.
+            windows::run_msi(&file, destination.as_deref(), msi_scope, job.stop, &mut *job.phase).map(|_| None)
+        }
         #[cfg(windows)]
         PackageKind::PortableZip => {
             crate::portable::install(app, &file, &version, previous, job.paths, destination.as_deref(), job.replace, &mut |record| {
@@ -260,16 +280,27 @@ fn selected_folder(folder: &str, writable: bool) -> Result<PathBuf, String> {
         return Err(invalid("the folder is unavailable. Create it or reconnect its drive first"));
     }
     if writable {
-        let probe = path.join(format!(
-            ".artcraft-launcher-write-test-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos())
-        ));
-        let output = std::fs::OpenOptions::new().write(true).create_new(true).open(&probe).map_err(|e| invalid(&e.to_string()))?;
-        drop(output);
-        std::fs::remove_file(&probe).map_err(|e| invalid(&e.to_string()))?;
+        write_probe(&path).map_err(|e| invalid(&e.to_string()))?;
     }
     Ok(path)
+}
+
+/// Creates and removes a scratch file in `dir`, the way a real write would be refused.
+fn write_probe(dir: &Path) -> std::io::Result<()> {
+    let probe = dir.join(format!(
+        ".artcraft-launcher-write-test-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos())
+    ));
+    drop(std::fs::OpenOptions::new().write(true).create_new(true).open(&probe)?);
+    std::fs::remove_file(&probe)
+}
+
+/// Whether this account can create files where `path` goes: `path` itself, or the nearest folder above it
+/// that exists (an install folder is created by the installer).
+#[cfg(windows)]
+fn can_create_files_in(path: &Path) -> bool {
+    path.ancestors().find(|folder| folder.is_dir()).is_some_and(|folder| write_probe(folder).is_ok())
 }
 
 #[cfg(any(windows, test))]
@@ -279,6 +310,35 @@ fn msi_folder_argument(path: &Path) -> Result<String, String> {
         return Err(format!("couldn't use install folder {value}: the path contains invalid characters"));
     }
     Ok(format!("INSTALLFOLDER=\"{value}\""))
+}
+
+/// The Windows Installer context an update must keep. A per-machine install elevates and writes
+/// HKLM registrations; a per-user one must not silently become a second, per-machine copy (or
+/// the other way round). A fresh install passes `None` and takes the package's own default,
+/// which is per-user for a dual-scope package.
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MsiScope {
+    PerUser,
+    PerMachine,
+}
+
+/// The `msiexec` properties that ask a dual-scope package for `scope`. Passing the context
+/// explicitly on every update also keeps a per-machine update working when the package's own
+/// default has since changed.
+///
+/// `ALLUSERS=1` is what the current per-machine-only packages already set themselves, so it
+/// changes nothing for them; `ALLUSERS=2` with `MSIINSTALLPERUSER=1` is the documented
+/// single-package way to request a per-user install of a dual-scope package. A per-user
+/// registered copy can only come from a dual-scope package, so its updates can safely ask for
+/// one.
+#[cfg(any(windows, test))]
+fn msi_scope_arguments(scope: Option<MsiScope>) -> Vec<&'static str> {
+    match scope {
+        Some(MsiScope::PerUser) => vec!["ALLUSERS=2", "MSIINSTALLPERUSER=1"],
+        Some(MsiScope::PerMachine) => vec!["ALLUSERS=1"],
+        None => Vec::new(),
+    }
 }
 
 /// Where `asset` is downloaded to (and its partial file kept while unfinished).
@@ -1433,35 +1493,7 @@ mod tree {
         let gz = std::fs::File::open(file).map_err(|e| e.to_string())?;
         let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(gz));
         archive.set_preserve_permissions(true);
-        // Bound entry count and cumulative unpacked bytes to prevent decompression bombs (CWE-409).
-        const MAX_ENTRIES: usize = 50_000;
-        const MAX_UNPACKED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-        let mut entry_count = 0;
-        let mut total_unpacked = 0u64;
-        let mut directories = Vec::new();
-        let entries = archive.entries().map_err(|e| format!("couldn't read archive entries ({e})"))?;
-        for entry in entries {
-            let mut entry = entry.map_err(|e| format!("invalid tar entry ({e})"))?;
-            entry_count += 1;
-            if entry_count > MAX_ENTRIES {
-                return Err("archive has too many entries".into());
-            }
-            let size = entry.size();
-            total_unpacked = total_unpacked.saturating_add(size);
-            if total_unpacked > MAX_UNPACKED_BYTES {
-                return Err("archive exceeds maximum unpacked size".into());
-            }
-            if entry.header().entry_type().is_dir() {
-                directories.push(entry);
-            } else {
-                entry.unpack_in(staging).map_err(|e| format!("couldn't unpack archive entry ({e})"))?;
-            }
-        }
-        // Delay directory entries until child entries are written so restrictive modes do not break child extraction.
-        directories.sort_by(|a, b| b.path_bytes().cmp(&a.path_bytes()));
-        for mut dir in directories {
-            dir.unpack_in(staging).map_err(|e| format!("couldn't unpack archive directory ({e})"))?;
-        }
+        unpack_entries(&mut archive, staging)?;
         let top = single_top_folder(staging)?;
         if top.join("bin").join(app.id).is_file() {
             return Ok(top);
@@ -1484,27 +1516,68 @@ mod tree {
             (top.join(format!("{id}.desktop")), tree.join("share/applications").join(format!("{id}.desktop"))),
             (top.join(format!("{id}.png")), tree.join("share/pixmaps").join(format!("{id}.png"))),
         ] {
-            if std::fs::symlink_metadata(&from).is_ok_and(|m| m.file_type().is_file()) {
-                if let Some(dir) = to.parent() {
-                    let rel = dir.strip_prefix(&tree).map_err(|_| "destination escapes staging tree".to_string())?;
-                    let mut check = tree.clone();
-                    for part in rel.components() {
-                        check.push(part);
-                        if let Ok(m) = std::fs::symlink_metadata(&check)
-                            && m.file_type().is_symlink()
-                        {
-                            return Err("destination parent directory is a symlink".into());
-                        }
-                    }
-                    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-                }
-                std::fs::rename(&from, &to).map_err(|e| e.to_string())?;
-            }
+            move_into_tree(&tree, &from, &to)?;
         }
         if !tree.join("bin").join(app.id).is_file() {
             return Err("the download doesn't contain the app".into());
         }
         Ok(tree)
+    }
+
+    /// Extracts the archive's entries into `staging`; directories last, so restrictive modes don't
+    /// stop their children from being written.
+    fn unpack_entries<R: std::io::Read>(archive: &mut tar::Archive<R>, staging: &Path) -> Result<(), String> {
+        // Bound entry count and cumulative unpacked bytes to prevent decompression bombs (CWE-409).
+        const MAX_ENTRIES: usize = 50_000;
+        const MAX_UNPACKED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+        let mut entry_count = 0;
+        let mut total_unpacked = 0u64;
+        let mut directories = Vec::new();
+        let entries = archive.entries().map_err(|e| format!("couldn't read archive entries ({e})"))?;
+        for entry in entries {
+            let mut entry = entry.map_err(|e| format!("invalid tar entry ({e})"))?;
+            entry_count += 1;
+            if entry_count > MAX_ENTRIES {
+                return Err("archive has too many entries".into());
+            }
+            total_unpacked = total_unpacked.saturating_add(entry.size());
+            if total_unpacked > MAX_UNPACKED_BYTES {
+                return Err("archive exceeds maximum unpacked size".into());
+            }
+            if entry.header().entry_type().is_dir() {
+                directories.push(entry);
+            } else {
+                entry.unpack_in(staging).map_err(|e| format!("couldn't unpack archive entry ({e})"))?;
+            }
+        }
+        // Delay directory entries until child entries are written so restrictive modes do not break child extraction.
+        directories.sort_by(|a, b| b.path_bytes().cmp(&a.path_bytes()));
+        for mut dir in directories {
+            dir.unpack_in(staging).map_err(|e| format!("couldn't unpack archive directory ({e})"))?;
+        }
+        Ok(())
+    }
+
+    /// Moves a regular file `from` to `to` inside the staging `tree`, creating its folders, unless
+    /// a folder on the way is a symlink.
+    fn move_into_tree(tree: &Path, from: &Path, to: &Path) -> Result<(), String> {
+        if !std::fs::symlink_metadata(from).is_ok_and(|m| m.file_type().is_file()) {
+            return Ok(());
+        }
+        if let Some(dir) = to.parent() {
+            let rel = dir.strip_prefix(tree).map_err(|_| "destination escapes staging tree".to_string())?;
+            let mut check = tree.to_path_buf();
+            for part in rel.components() {
+                check.push(part);
+                if let Ok(m) = std::fs::symlink_metadata(&check)
+                    && m.file_type().is_symlink()
+                {
+                    return Err("destination parent directory is a symlink".into());
+                }
+            }
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        std::fs::rename(from, to).map_err(|e| e.to_string())
     }
 
     /// Every file under `root`, relative to it. Does not descend through symlinks (CWE-59, CWE-400).
@@ -1666,7 +1739,10 @@ pub(crate) fn msi_path(msi: &Path) -> Result<PathBuf, String> {
 pub mod windows {
     use artcraft_launcher_core::protocol::CANCELLED;
 
-    use super::{CraftApp, INSTALLER, JobPhase, Path, PathBuf, Stop, cancelled, msi_command, msi_folder_argument, msi_log, process, turn};
+    use super::{
+        CraftApp, INSTALLER, JobPhase, MsiScope, Path, PathBuf, Stop, cancelled, msi_command, msi_folder_argument, msi_log, msi_scope_arguments,
+        process, turn,
+    };
 
     fn msiexec() -> PathBuf {
         std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from).join(r"System32\msiexec.exe")
@@ -1684,12 +1760,23 @@ pub mod windows {
     }
 
     /// Runs an MSI with a progress window and no restart. Windows asks for permission itself.
-    pub fn run_msi(msi: &Path, destination: Option<&Path>, stop: &Stop, phase: &mut dyn FnMut(JobPhase)) -> Result<(), String> {
+    /// `scope`, from the copy being replaced's registration, keeps the update in the same
+    /// Windows Installer context (see [`MsiScope`]).
+    pub fn run_msi(
+        msi: &Path,
+        destination: Option<&Path>,
+        scope: Option<MsiScope>,
+        stop: &Stop,
+        phase: &mut dyn FnMut(JobPhase),
+    ) -> Result<(), String> {
         in_turn(stop, phase, JobPhase::Installing, || {
             use std::os::windows::process::CommandExt;
             let mut command = msi_command(&msiexec(), msi)?;
             if let Some(dir) = destination {
                 command.raw_arg(msi_folder_argument(dir)?);
+            }
+            for argument in msi_scope_arguments(scope) {
+                command.raw_arg(argument);
             }
             let status = command.status().map_err(|e| format!("couldn't start the Windows Installer ({e})"))?;
             explain(status.code()).map_err(|e| match status.code() {
@@ -1843,6 +1930,19 @@ mod tests {
         }
         assert!(msi_folder_argument(Path::new("D:\\bad\" TRANSFORMS=evil")).is_err());
         assert!(msi_folder_argument(Path::new("D:\\bad\nfolder")).is_err());
+    }
+
+    #[test]
+    fn msi_updates_keep_the_registered_context_and_new_installs_send_no_scope() {
+        // A fresh install passes nothing: the package's own default (per-user for a dual-scope
+        // package) applies, and an older per-machine-only package keeps behaving exactly as
+        // before.
+        assert_eq!(msi_scope_arguments(None), Vec::<&str>::new());
+        // A per-user update asks for the documented single-package per-user install...
+        assert_eq!(msi_scope_arguments(Some(MsiScope::PerUser)), vec!["ALLUSERS=2", "MSIINSTALLPERUSER=1"]);
+        // ...and a per-machine update asks for what per-machine-only packages already set
+        // themselves, so it changes nothing for the current releases.
+        assert_eq!(msi_scope_arguments(Some(MsiScope::PerMachine)), vec!["ALLUSERS=1"]);
     }
 
     #[cfg(target_os = "linux")]
