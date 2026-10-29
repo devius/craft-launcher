@@ -390,3 +390,7 @@ filter	Installed	დაინსტალირებული
 	Last updated: {date}	ბოლო განახლება: {date}
 column	Version	ვერსია
 column	Author	ავტორი
+	Choose version	ვერსიის არჩევა
+	latest {version}	უახლესი {version}
+	Launcher version	Launcher-ის ვერსია
+	Install version {version}	{version} ვერსიის ინსტალაცია
