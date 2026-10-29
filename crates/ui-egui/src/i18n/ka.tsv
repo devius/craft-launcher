@@ -143,6 +143,7 @@
 	Open link	ბმულის გახსნა
 	Update	განახლება
 	{name} icon	{name}-ის ხატულა
+	by {name}	ავტორი: {name}
 	Loading ArtCraft Launcher…	ArtCraft Launcher იტვირთება…
 	Cancel update	განახლების გაუქმება
 	Stop waiting; the update can be started again later	ლოდინის შეწყვეტა; განახლების დაწყება მოგვიანებითაც შეიძლება
@@ -181,6 +182,7 @@ gridcraft	Spreadsheets and data	ელცხრილები და მონ�
 cadcraft	Computer-aided design and drafting	დაპროექტება და ნახაზები
 soundcraft	Recording, editing and mixing audio	აუდიოს ჩაწერა, რედაქტირება და მიქსირება
 figcraft	Interface design and prototyping	ინტერფეისის დიზაინი და პროტოტიპირება
+solidcraft	Parametric 3D CAD	პარამეტრული 3D დაპროექტება
 
 # Contextual: month abbreviations for date rendering
 month	Jan	იან
@@ -387,3 +389,4 @@ filter	Installed	დაინსტალირებული
 	Show {n} more changes	კიდევ {n} ცვლილების ჩვენება
 	Last updated: {date}	ბოლო განახლება: {date}
 column	Version	ვერსია
+column	Author	ავტორი
