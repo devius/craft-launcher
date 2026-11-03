@@ -131,6 +131,9 @@ pub struct NativeBackend {
     http: Option<Http>,
     source: Option<Arc<dyn ReleaseSource>>,
     platform: Option<Platform>,
+    /// The version-choice file the apps read (see [`crate::pins`]); `None` when there is no
+    /// per-user data folder.
+    pins: Option<std::path::PathBuf>,
 }
 
 impl NativeBackend {
@@ -172,7 +175,11 @@ impl NativeBackend {
             pictures_busy: Mutex::new(std::collections::HashSet::new()),
             last_check: Mutex::new(None),
         });
-        let backend = Self { shared, paths, http, source, platform: native_platform() };
+        let pins = craft_update::pins::Pins::default_path();
+        if let Some(path) = &pins {
+            crate::pins::prepare_folder(path);
+        }
+        let backend = Self { shared, paths, http, source, platform: native_platform(), pins };
         backend.replay_cache();
         backend.detect_all();
         backend
@@ -299,7 +306,7 @@ impl NativeBackend {
     }
 
     fn start_job(&self, app_id: &str, work: Work) {
-        let uninstall = work == Work::Uninstall;
+        let uninstall = matches!(work, Work::Uninstall);
         let Some(app) = CraftApp::by_id(app_id) else { return };
         log::info!("{}: starting {} job", app.name, if uninstall { "uninstall" } else { "install/update" });
         let stop = Arc::new(Stop::default());
@@ -354,7 +361,10 @@ impl NativeBackend {
                     existing.as_ref(),
                     record.as_ref(),
                     &stop,
-                    work == Work::Replace,
+                    match &work {
+                        Work::Replace(path) => Some(path.as_str()),
+                        Work::Install | Work::Uninstall => None,
+                    },
                     source.as_deref(),
                 );
                 // Stopped by the connection rather than by the user: say so, and how to go on.
@@ -449,10 +459,11 @@ impl NativeBackend {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum Work {
     Install,
-    Replace,
+    /// Install over the path the user agreed to overwrite (see [`Command::Replace`]).
+    Replace(String),
     Uninstall,
 }
 
@@ -462,6 +473,13 @@ fn release_matches_track(release: &Release, track: &VersionTrack, prereleases: b
         VersionTrack::Nightly => artcraft_launcher_core::release::is_nightly(release),
         VersionTrack::Pinned(tag) => &release.tag == tag,
     }
+}
+
+/// Whether `chosen` is a version picked by name that is older than the installed copy.
+fn is_chosen_downgrade(track: &VersionTrack, chosen: &Release, existing: Option<&Installed>) -> bool {
+    let VersionTrack::Pinned(tag) = track else { return false };
+    let (Some(chosen_v), Some(installed_v)) = (chosen.version.as_ref(), existing.and_then(|i| i.version.as_ref())) else { return false };
+    chosen.tag == *tag && version::is_newer(installed_v, chosen_v)
 }
 
 /// For a version chosen by name that is older than the installed copy: the installed version's own
@@ -474,11 +492,9 @@ fn downgrade_previous(
     existing: Option<&Installed>,
     list: impl FnOnce() -> Result<Vec<Release>, String>,
 ) -> Result<Option<Release>, String> {
-    let VersionTrack::Pinned(tag) = track else { return Ok(None) };
-    let (Some(chosen_v), Some(installed_v)) = (chosen.version.as_ref(), existing.and_then(|i| i.version.as_ref())) else { return Ok(None) };
-    if chosen.tag != *tag || !version::is_newer(installed_v, chosen_v) {
+    let Some(installed_v) = existing.and_then(|i| i.version.as_ref()).filter(|_| is_chosen_downgrade(track, chosen, existing)) else {
         return Ok(None);
-    }
+    };
     let releases =
         list().map_err(|e| format!("couldn't find {} {installed_v} to put back if going back fails ({e}), so nothing was changed.", app.name))?;
     releases.into_iter().find(|r| r.version.as_ref() == Some(installed_v)).map(Some).ok_or_else(|| {
@@ -497,7 +513,7 @@ fn run_install(
     existing: Option<&Installed>,
     record: Option<&crate::manifest::Record>,
     stop: &Stop,
-    replace: bool,
+    approved: Option<&str>,
     source: Option<&dyn ReleaseSource>,
 ) -> Result<String, String> {
     if let Some(msg) = existing.and_then(|e| install::managed_elsewhere(app, e, false)) {
@@ -527,11 +543,19 @@ fn run_install(
             format!("{} {} has no download for {}", app.name, release.version_label(), platform.label())
         }
     })?;
-    // Going back to a version chosen by name: the installed version's own package is found first,
-    // so a downgrade that fails can put it back. Without it nothing changes.
-    let previous = downgrade_previous(app, track, &release, existing, || {
-        source.ok_or_else(|| "secure connections aren't available on this system".to_string())?.versions(&feed_repo(load_feed(paths).as_ref(), app))
-    })?;
+    // Going back to a version chosen by name. A macOS bundle or a launcher AppImage keeps the old
+    // copy until the new one is in place. Otherwise the installed version's own package is found
+    // first, so a downgrade that fails can put it back. Without it nothing changes.
+    let keeps_old_copy = install::keeps_old_copy(kind, existing, record);
+    let previous = if keeps_old_copy {
+        None
+    } else {
+        downgrade_previous(app, track, &release, existing, || {
+            source
+                .ok_or_else(|| "secure connections aren't available on this system".to_string())?
+                .versions(&feed_repo(load_feed(paths).as_ref(), app))
+        })?
+    };
     let previous_asset = match &previous {
         Some(p) => Some(
             planned_asset(app, p, platform, options, existing, record)
@@ -541,11 +565,20 @@ fn run_install(
         ),
         None => None,
     };
-    let downgrade = previous.as_ref().zip(previous_asset.as_ref()).map(|(previous, asset)| install::Downgrade { previous, asset });
-    if !replace && let Some(path) = install::occupied(app, &asset, kind, existing, record, &options.install_locations, paths)? {
-        shared.emit(Event::Occupied { app: app.id.to_string(), path: path.display().to_string() });
-        return Err(format!("{} already exists", path.display()));
-    }
+    let downgrade = if keeps_old_copy {
+        is_chosen_downgrade(track, &release, existing).then_some(install::Downgrade::KeepOldCopy)
+    } else {
+        previous.as_ref().zip(previous_asset.as_ref()).map(|(previous, asset)| install::Downgrade::Reinstall { previous, asset })
+    };
+    let occupied = install::occupied(app, &asset, kind, existing, record, &options.install_locations, paths)?;
+    let replace = match replace_consent(occupied.as_deref(), approved) {
+        Consent::Free => false,
+        Consent::Given => true,
+        Consent::Ask(path) => {
+            shared.emit(Event::Occupied { app: app.id.to_string(), path: path.display().to_string() });
+            return Err(format!("{} already exists", path.display()));
+        }
+    };
     let mut last_emit = Instant::now() - Duration::from_secs(1);
     let mut phase = |p: JobPhase| {
         // Downloads report thousands of times; the UI needs ~20 a second.
@@ -580,6 +613,29 @@ fn run_install(
         }
     }
     Ok(installed_text(app, existing.is_some(), &release))
+}
+
+/// Whether an install may write over what is at its destination.
+#[derive(Debug, PartialEq, Eq)]
+enum Consent<'a> {
+    /// Nothing the launcher didn't put there is in the way.
+    Free,
+    /// The user agreed to overwrite exactly this destination.
+    Given,
+    /// Something is in the way and the user hasn't agreed to overwrite it: ask.
+    Ask(&'a std::path::Path),
+}
+
+/// The user's agreement to replace a file covers the path they were shown (`approved`), and only
+/// that one. The release can change between the question and the answer (a new version, another
+/// asset, another folder), and the install then writes somewhere else: it must not take the old
+/// "yes" as leave to overwrite a different file (CWE-367).
+fn replace_consent<'a>(occupied: Option<&'a std::path::Path>, approved: Option<&str>) -> Consent<'a> {
+    match occupied {
+        None => Consent::Free,
+        Some(path) if approved == Some(path.display().to_string().as_str()) => Consent::Given,
+        Some(path) => Consent::Ask(path),
+    }
 }
 
 /// What a finished install tells the user.
@@ -1122,7 +1178,7 @@ impl Backend for NativeBackend {
                 });
             }
             Command::Install { app } => self.start_job(&app, Work::Install),
-            Command::Replace { app } => self.start_job(&app, Work::Replace),
+            Command::Replace { app, path } => self.start_job(&app, Work::Replace(path)),
             Command::Uninstall { app } => self.start_job(&app, Work::Uninstall),
             Command::Pause { app } => {
                 if let Some(stop) = self.shared.jobs.lock().unwrap_or_else(PoisonError::into_inner).get(&app) {
@@ -1174,6 +1230,15 @@ impl Backend for NativeBackend {
                     *o = options;
                     changed
                 };
+                // Every Configure, not only on a change: the first one carries the choices saved
+                // before the shared file existed, and the file may have been deleted since.
+                if let Some(path) = &self.pins {
+                    match crate::pins::sync(path, &self.options().versions) {
+                        Ok(true) => log::info!("version choices written to {}", path.display()),
+                        Ok(false) => {}
+                        Err(e) => log::warn!("couldn't write the version choices: {e}"),
+                    }
+                }
                 // Another package format means another file to download.
                 let options = self.options();
                 for app in &SUITE {
@@ -1223,6 +1288,30 @@ mod tests {
 
     fn tagged(v: &str) -> Release {
         Release { tag: format!("v{v}"), version: version::parse(v), ..Default::default() }
+    }
+
+    /// A "Replace" answer covers the path that was shown, never a destination that changed since.
+    #[test]
+    fn replacing_needs_consent_for_the_exact_path_in_the_way() {
+        let shown = std::path::Path::new("/home/a/Applications/photocraft-0.5.0-linux-x86_64.AppImage");
+        let moved = std::path::Path::new("/home/a/Applications/photocraft-0.6.0-linux-x86_64.AppImage");
+        let approved = shown.display().to_string();
+        assert_eq!(replace_consent(None, None), Consent::Free);
+        assert_eq!(replace_consent(None, Some(&approved)), Consent::Free, "nothing in the way: nothing to overwrite");
+        assert_eq!(replace_consent(Some(shown), None), Consent::Ask(shown));
+        assert_eq!(replace_consent(Some(shown), Some(&approved)), Consent::Given);
+        assert_eq!(replace_consent(Some(moved), Some(&approved)), Consent::Ask(moved), "a yes for one file must not overwrite another");
+    }
+
+    #[test]
+    fn a_downgrade_is_only_a_version_chosen_by_name_below_the_installed_one() {
+        let installed = Installed { version: version::parse("0.14.0"), source: InstallSource::MacApp, location: String::new(), package: None };
+        let pinned = VersionTrack::Pinned("v0.13.0".into());
+        assert!(is_chosen_downgrade(&pinned, &tagged("0.13.0"), Some(&installed)));
+        assert!(!is_chosen_downgrade(&VersionTrack::Stable, &tagged("0.13.0"), Some(&installed)));
+        assert!(!is_chosen_downgrade(&VersionTrack::Pinned("v0.15.0".into()), &tagged("0.15.0"), Some(&installed)));
+        assert!(!is_chosen_downgrade(&pinned, &tagged("0.12.0"), Some(&installed)));
+        assert!(!is_chosen_downgrade(&pinned, &tagged("0.13.0"), None));
     }
 
     #[test]
@@ -1665,7 +1754,7 @@ mod tests {
         let shared = shared();
         shared.latest.lock().unwrap().insert(APP.to_string(), release("0.5.0"));
         let shared = Arc::new(shared);
-        NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform) }
+        NativeBackend { shared, paths: Paths::under(root), http: None, source, platform: Some(platform), pins: Some(root.join("versions.json")) }
     }
 
     /// Reports again, and returns what the UI was last told about a kept download.
@@ -1800,6 +1889,21 @@ mod tests {
     }
 
     #[test]
+    fn the_settings_reach_the_file_the_apps_read() {
+        let Some(platform) = native_platform() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let mut backend = backend(dir.path(), platform, None);
+        let mut options = BackendOptions::default();
+        options.versions.insert("pdfcraft".into(), VersionTrack::Pinned("v0.13.0".into()));
+        backend.send(Command::Configure(options));
+        let pins = craft_update::pins::Pins::load(&dir.path().join("versions.json"));
+        assert_eq!(pins.track("pdfcraft"), Some(craft_update::pins::VersionTrack::Pinned("v0.13.0".into())));
+        backend.send(Command::Configure(BackendOptions::default()));
+        let pins = craft_update::pins::Pins::load(&dir.path().join("versions.json"));
+        assert_eq!(pins.choice("pdfcraft"), craft_update::pins::Choice::Stable);
+    }
+
+    #[test]
     fn a_check_that_finds_a_newer_release_ends_the_retry_offer() {
         struct Newer;
         impl ReleaseSource for Newer {
@@ -1867,8 +1971,8 @@ mod tests {
             assert!(!landed_after(error), "{error}");
         }
         // A call shared with other apps may have installed this one before it failed.
-        let shared = "the system installer stopped with error 100 while handling 2 apps in one go. Try them one at a time.";
-        assert_eq!(landed_after(shared), cfg!(any(target_os = "linux", windows)));
+        let shared = "the system installer stopped with error 100 while handling 2 apps together. Try them one at a time.";
+        assert_eq!(landed_after(shared), cfg!(target_os = "linux"));
         assert!(!landed_despite(shared, before.as_ref(), before.as_ref(), &latest));
     }
 

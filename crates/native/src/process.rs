@@ -159,7 +159,7 @@ pub fn is_flatpak_available() -> bool {
     if in_sandbox() {
         capture("flatpak-spawn", &["--host", "flatpak", "--version"], Duration::from_secs(3)).is_some()
     } else {
-        which_on_path("flatpak").is_some()
+        which("flatpak").is_some()
     }
 }
 
@@ -290,25 +290,48 @@ fn detect_discord_scheme_handler() -> bool {
     false
 }
 
-fn which_on_path(name: &str) -> Option<std::path::PathBuf> {
+/// Finds a program on `PATH`.
+pub(crate) fn which(name: &str) -> Option<std::path::PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file())
 }
 
 /// Starts an app binary from its own folder.
 pub fn launch_binary(exe: &Path, args: &[&str]) -> Result<(), String> {
+    launch_binary_with_env(exe, args, &[])
+}
+
+/// Starts an app binary from its own folder with `env` added to its environment. Inside the
+/// sandbox `flatpak-spawn` does not pass the launcher's environment on, so each one becomes an
+/// `--env=` argument instead.
+pub fn launch_binary_with_env(exe: &Path, args: &[&str], env: &[(&str, &std::ffi::OsStr)]) -> Result<(), String> {
     let mut cmd = if in_sandbox() {
         let mut c = command("flatpak-spawn");
-        c.arg("--host").arg(exe);
+        c.arg("--host");
+        c.args(env_args(env));
+        c.arg(exe);
         c
     } else {
-        command(exe)
+        let mut c = command(exe);
+        c.envs(env.iter().copied());
+        c
     };
     cmd.args(args);
     if let Some(dir) = exe.parent() {
         cmd.current_dir(dir);
     }
     spawn_detached(cmd)
+}
+
+/// `--env=NAME=VALUE` for each of `env`, as `flatpak run` and `flatpak-spawn` take them.
+pub fn env_args(env: &[(&str, &std::ffi::OsStr)]) -> Vec<std::ffi::OsString> {
+    env.iter()
+        .map(|(name, value)| {
+            let mut arg = std::ffi::OsString::from(format!("--env={name}="));
+            arg.push(value);
+            arg
+        })
+        .collect()
 }
 
 /// Opens a file, folder or URL with the system's default handler.
@@ -475,6 +498,19 @@ fn pgrep_pattern(path: &str) -> String {
         pattern.push(c);
     }
     pattern
+}
+
+#[cfg(test)]
+mod env_tests {
+    use super::*;
+
+    #[test]
+    fn each_variable_becomes_one_env_argument_with_its_value_intact() {
+        let path = std::ffi::OsStr::new("/home/ana/.local/share/artcraft-launcher/versions with space.json");
+        let args = env_args(&[("CRAFT_VERSIONS_FILE", path)]);
+        assert_eq!(args, [std::ffi::OsString::from("--env=CRAFT_VERSIONS_FILE=/home/ana/.local/share/artcraft-launcher/versions with space.json")]);
+        assert!(env_args(&[]).is_empty());
+    }
 }
 
 #[cfg(test)]

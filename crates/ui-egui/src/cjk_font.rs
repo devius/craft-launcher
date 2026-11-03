@@ -17,6 +17,9 @@ use crate::i18n::Script;
 const MAX_FONT_BYTES: u64 = 100 * 1024 * 1024;
 /// Faces looked at in one collection file (PingFang has 24).
 const MAX_FACES: u32 = 64;
+/// Name records compared per name ID in one face. Real fonts carry a few dozen translations of
+/// each name; the cap bounds the decoding a crafted name table can ask for.
+const MAX_NAME_RECORDS: usize = 256;
 
 /// The bundled body font (Inter), whose baseline a fallback face is nudged onto.
 const BODY_FONT: &[u8] = include_bytes!("../../../assets/fonts/Inter-Variable.ttf");
@@ -108,18 +111,13 @@ fn read(path: &Path) -> Option<Vec<u8>> {
 /// The face of `family` in a font file or collection: its Regular face, else the first face of
 /// that family. Matches the (typographic) family name in any language the file gives it in.
 pub(crate) fn face_index(data: &[u8], family: &str) -> Option<u32> {
-    let names = |font: &FontRef<'_>, ids: [StringId; 2]| -> Vec<String> {
-        ids.into_iter().flat_map(|id| font.localized_strings(id).map(|s| s.to_string())).collect()
-    };
     let mut first = None;
     for index in 0..MAX_FACES {
         let Ok(font) = FontRef::from_index(data, index) else { break };
-        let families = names(&font, [StringId::TYPOGRAPHIC_FAMILY_NAME, StringId::FAMILY_NAME]);
-        if !families.iter().any(|f| f.eq_ignore_ascii_case(family)) {
+        if !has_name(&font, [StringId::TYPOGRAPHIC_FAMILY_NAME, StringId::FAMILY_NAME], family) {
             continue;
         }
-        let styles = names(&font, [StringId::TYPOGRAPHIC_SUBFAMILY_NAME, StringId::SUBFAMILY_NAME]);
-        if styles.iter().any(|s| s.eq_ignore_ascii_case("Regular")) {
+        if has_name(&font, [StringId::TYPOGRAPHIC_SUBFAMILY_NAME, StringId::SUBFAMILY_NAME], "Regular") {
             return Some(index);
         }
         first.get_or_insert(index);
@@ -127,13 +125,51 @@ pub(crate) fn face_index(data: &[u8], family: &str) -> Option<u32> {
     first
 }
 
+/// Whether one of the first [`MAX_NAME_RECORDS`] names of each of `ids` in `font` is `wanted`
+/// (ASCII case ignored). Each name is decoded only as far as it still matches, and never kept: a name table
+/// can point many records at the same long string.
+fn has_name(font: &FontRef<'_>, ids: [StringId; 2], wanted: &str) -> bool {
+    ids.into_iter().any(|id| font.localized_strings(id).take(MAX_NAME_RECORDS).any(|name| chars_eq_ignore_ascii_case(name.chars(), wanted)))
+}
+
+/// `chars` spells `wanted`, ignoring ASCII case. Reads at most one char past `wanted`'s length.
+fn chars_eq_ignore_ascii_case(mut chars: impl Iterator<Item = char>, wanted: &str) -> bool {
+    let mut want = wanted.chars();
+    loop {
+        match (chars.next(), want.next()) {
+            (None, None) => return true,
+            (Some(a), Some(b)) if a.eq_ignore_ascii_case(&b) => {}
+            _ => return false,
+        }
+    }
+}
+
 /// Where each system keeps a font for `script`, best first.
 fn candidates(script: Script) -> Vec<Candidate> {
-    match script {
+    let found = match script {
         Script::Chinese => chinese_candidates(),
         Script::Japanese => japanese_candidates(),
         Script::Georgian => georgian_candidates(),
+    };
+    let mut out = Vec::with_capacity(found.len() * 2);
+    for candidate in found {
+        // A Flatpak sandbox sees the host's fonts only there; its own folders hold the runtime's (#620).
+        let host = flatpak_host_path(&candidate.path).map(|path| Candidate { path, family: candidate.family });
+        out.push(candidate);
+        out.extend(host);
     }
+    out
+}
+
+/// Where Flatpak mounts the host's system font folder holding `path` (`add_font_path_args`, `common/flatpak-run.c`).
+fn flatpak_host_path(path: &Path) -> Option<PathBuf> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    // User fonts need no twin: both manifests grant `--filesystem=home`.
+    [("/usr/share/fonts", "/run/host/fonts"), ("/usr/local/share/fonts", "/run/host/local-fonts")]
+        .into_iter()
+        .find_map(|(dir, host)| path.strip_prefix(dir).ok().map(|rest| Path::new(host).join(rest)))
 }
 
 /// The MiSans files a user installs by hand (Xiaomi's free Chinese face: the one some systems
@@ -393,6 +429,28 @@ mod tests {
         assert_eq!(face_index(&[0u8; 64], "PingFang SC"), None);
     }
 
+    /// Names compare without regard to ASCII case, and a long name stops being read once it
+    /// runs past the wanted one.
+    #[test]
+    fn names_compare_incrementally() {
+        assert!(chars_eq_ignore_ascii_case("PingFang SC".chars(), "pingfang sc"));
+        assert!(!chars_eq_ignore_ascii_case("PingFang".chars(), "PingFang SC"));
+        assert!(!chars_eq_ignore_ascii_case("PingFang SCX".chars(), "PingFang SC"));
+        let mut read = 0;
+        let endless = std::iter::repeat('a').inspect(|_| read += 1);
+        assert!(!chars_eq_ignore_ascii_case(endless, "aaa"));
+        assert_eq!(read, 4);
+    }
+
+    /// The bundled body font is found by its own family, in any ASCII case, and not by a prefix.
+    #[test]
+    fn face_index_finds_a_family_by_name() {
+        assert_eq!(face_index(BODY_FONT, "Inter"), Some(0));
+        assert_eq!(face_index(BODY_FONT, "inter"), Some(0));
+        assert_eq!(face_index(BODY_FONT, "Inte"), None);
+        assert_eq!(face_index(BODY_FONT, "PingFang SC"), None);
+    }
+
     /// The baseline nudge reads a face's ascent and height; the reference is Inter's.
     #[test]
     fn face_metrics_reads_font_metrics() {
@@ -446,6 +504,27 @@ mod tests {
         let first_misans = chinese_candidates().iter().position(|c| c.family == "MiSans").unwrap();
         assert!(chinese_candidates()[..first_misans].iter().all(|c| c.family != "MiSans"));
         assert!(first_misans > 0, "the system's own fonts come first");
+    }
+
+    /// Inside Flatpak the host's fonts are under `/run/host` (#620), each right after its own path.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn flatpak_host_fonts_follow_the_paths_they_mirror() {
+        for (path, host) in [
+            ("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", Some("/run/host/fonts/noto-cjk/NotoSansCJK-Regular.ttc")),
+            ("/usr/local/share/fonts/noto/NotoSansCJK-Regular.ttc", Some("/run/host/local-fonts/noto/NotoSansCJK-Regular.ttc")),
+            ("/home/u/.local/share/fonts/MiSans-Regular.ttf", None),
+            ("/usr/share/fontsx/a.ttf", None),
+            ("/run/host/fonts/a.ttf", None),
+        ] {
+            assert_eq!(flatpak_host_path(Path::new(path)), host.map(PathBuf::from), "{path}");
+        }
+        for (script, family) in [(Script::Chinese, "Noto Sans CJK SC"), (Script::Japanese, "Noto Sans CJK JP")] {
+            let found = candidates(script);
+            let at = found.iter().position(|c| c.path == Path::new("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc")).unwrap();
+            assert_eq!(found[at + 1].path, Path::new("/run/host/fonts/noto-cjk/NotoSansCJK-Regular.ttc"));
+            assert_eq!(found[at + 1].family, family);
+        }
     }
 
     #[test]
