@@ -426,4 +426,4 @@ materialcraft	Preview materials in 2D and on 3D models.	მასალები
 	Advanced	დამატებითი
 	Migrate Flatpak bundles to ArtCraft OCI (experimental)	Flatpak პაკეტების გადატანა ArtCraft OCI-ზე (ექსპერიმენტული)
 	On update, switch first party apps when the matching package is available. Otherwise, keep using bundles.	განახლებისას ArtCraft-ის საკუთარი აპლიკაციები OCI-ზე გადადის, თუ შესაბამისი პაკეტი ხელმისაწვდომია. სხვა შემთხვევაში კვლავ Flatpak პაკეტები გამოიყენება.
-	The OCI repository is a preview with GPG verification disabled.	OCI რეპოზიტორია საცდელი ვერსიაა, GPG-ით შემოწმება გამორთულია.
+	The OCI repository is a preview with GPG verification disabled.	OCI რეპოზიტორია წინასწარი ვერსიაა და მასში GPG-ით შემოწმება გამორთულია.
