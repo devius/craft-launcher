@@ -432,7 +432,7 @@ column	Author	ავტორი
 	Download selected version	არჩეული ვერსიის ჩამოტვირთვა
 	Older launcher versions require a manual reinstall.	Launcher-ის ძველ ვერსიებს ხელით ხელახალი ინსტალაცია სჭირდება.
 	Your files may not open in older versions.	თქვენი ფაილები შეიძლება ძველ ვერსიებში არ გაიხსნას.
-	Enable automatic installs in Settings to follow new nightly builds.	ახალი ღამის ვერსიების მისაღებად პარამეტრებში ჩართეთ ავტომატური ინსტალაცია.
+	Enable automatic installs in Settings to follow new nightly builds.	ახალი ღამის აწყობების მისაღებად პარამეტრებში ჩართეთ ავტომატური ინსტალაცია.
 texturecraft	3D texture painting	3D ტექსტურების ხატვა
 texturecraft	Paint materials on 3D models and export textures.	3D მოდელებზე მასალებით ხატვა და ტექსტურების ექსპორტი.
 texturecraft	Materials	მასალები
@@ -508,14 +508,14 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Only this pre-release copy will be removed. Stable copies and user data are kept.	წაიშლება მხოლოდ წინასწარი ვერსიის ეს ასლი. სტაბილური ასლები და მომხმარებლის მონაცემები შენარჩუნდება.
 	Only verified, isolated builds are installable. Turning this off never deletes installed copies or their data.	მხოლოდ გადამოწმებული, იზოლირებული ვერსიების ინსტალაციაა შესაძლებელი. გამორთვა დაინსტალირებულ ასლებსა და მათ მონაცემებს არასოდეს შლის.
 	Open stable	სტაბილური ვერსიის გახსნა
-	Pre-Release	წინასწარი ვერსია
+	Pre-Release	წინასწარი გამოშვება
 	Pre-release builds are off. Installed copies and their data are kept.	წინასწარი ვერსიები გამორთულია. დაინსტალირებული ასლები და მათი მონაცემები შენარჩუნებულია.
 	Pre-release installation is unavailable on this platform.	ამ პლატფორმაზე წინასწარი ვერსიების ინსტალაცია მიუწვდომელია.
 	Show installed copy	დაინსტალირებული ასლის ჩვენება
 	Stable	სტაბილური
 	These are pre-release builds. They will have issues and may lose work.	ეს წინასწარი ვერსიებია. მათში იქნება ხარვეზები და შესაძლოა ნამუშევარი დაიკარგოს.
 	They install separately with separate settings. Keep backups: files saved by a newer build may not open in stable versions.	ისინი ცალკე ინსტალირდება, ცალკე პარამეტრებით. შეინახეთ სარეზერვო ასლები: უფრო ახალ ვერსიაში შენახული ფაილები შესაძლოა სტაბილურ ვერსიებში არ გაიხსნას.
-	Try nightly builds	ღამის ვერსიების გამოცდა
+	Try nightly builds	ღამის აწყობების გამოცდა
 	Turn off pre-release builds	წინასწარი ვერსიების გამორთვა
 	Uninstall pre-release	წინასწარი ვერსიის დეინსტალაცია
 	Uninstall pre-release?	წინასწარი ვერსიის დეინსტალაცია?
@@ -525,12 +525,12 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	Pre-release builds are off.	წინასწარი ვერსიები გამორთულია.
 	Installed copies and their data are kept. To discover new builds, enable pre-release builds in Settings.	დაინსტალირებული ასლები და მათი მონაცემები შენარჩუნებულია. ახალი ვერსიების მოსაძიებლად პარამეტრებში ჩართეთ წინასწარი ვერსიები.
 	Installed pre-release copy	წინასწარი ვერსიის დაინსტალირებული ასლი
-	Nightly builds use a separate install and settings. Stable updates stay unchanged.	ღამის ვერსიებს ცალკე ინსტალაცია და პარამეტრები აქვს. სტაბილური განახლებები უცვლელი რჩება.
+	Nightly builds use a separate install and settings. Stable updates stay unchanged.	ღამის აწყობებს ცალკე ინსტალაცია და პარამეტრები აქვს. სტაბილური განახლებები უცვლელი რჩება.
 
 # Availability-only pre-release destination (English fallback)
 	Could not check for pre-release builds.	წინასწარი ვერსიების შემოწმება ვერ მოხერხდა.
 	No pre-release builds are available yet.	წინასწარი ვერსიები ჯერ ხელმისაწვდომი არ არის.
-	Nightly builds, separate from your stable apps.	ღამის ვერსიები, თქვენი სტაბილური აპლიკაციებისგან ცალკე.
+	Nightly builds, separate from your stable apps.	ღამის აწყობები, თქვენი სტაბილური აპლიკაციებისგან ცალკე.
 
 # Approved consent Copy A: translated paragraphs. Existing translations retained unchanged.
 	Pre-release builds let you try new work early, but they will have bugs and may lose unsaved work.	წინასწარი ვერსიები სიახლეების ადრე გამოცდის საშუალებას გაძლევთ, თუმცა მათში იქნება ხარვეზები და შესაძლოა შეუნახავი ნამუშევარი დაიკარგოს.
@@ -541,8 +541,8 @@ anicraft	Classic tweens with eight easing presets and custom ease curves, plus s
 	{month}/{day}/{year}	{day}.{month}.{year}
 
 # Distinct nightly discovery; ordinary beta/RC filtering remains unchanged.
-	Nightly builds	ღამის ვერსიები
-	Discover nightly builds (Pre-Release page)	ღამის ვერსიების მოძიება (გვერდი „წინასწარი ვერსია“)
+	Nightly builds	ღამის აწყობები
+	Discover nightly builds (Pre-Release page)	ღამის აწყობების მოძიება (გვერდი „წინასწარი გამოშვება“)
 	Separate installs, settings and data. Turning this off keeps installed copies and their data.	ცალკე ინსტალაციები, პარამეტრები და მონაცემები. გამორთვა ინარჩუნებს დაინსტალირებულ ასლებსა და მათ მონაცემებს.
 	Pre-release builds aren't available on this platform yet.	ამ პლატფორმაზე წინასწარი ვერსიები ჯერ ხელმისაწვდომი არ არის.
 	Betas and release candidates can replace your stable installation.	ბეტა-ვერსიებმა და გამოშვების კანდიდატებმა შეიძლება ჩაანაცვლოს თქვენი სტაბილური ინსტალაცია.
